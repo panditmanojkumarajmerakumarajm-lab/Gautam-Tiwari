@@ -15,7 +15,8 @@ import {
   Lock,
   TrendingUp,
   X,
-  History
+  History,
+  Sparkles
 } from "lucide-react";
 import { motion } from "motion/react";
 import { 
@@ -25,23 +26,57 @@ import {
   onSnapshot, 
   doc, 
   updateDoc, 
+  setDoc,
   getDoc, 
   where,
+  serverTimestamp,
   handleFirestoreError
 } from "../lib/firebase";
 
 interface AdminPanelProps {
   onClose: () => void;
+  logoUrl?: string;
 }
 
-export default function AdminPanel({ onClose }: AdminPanelProps) {
+import { OwnerAvatar } from "./OwnerAvatar";
+
+const IndianFlag = () => (
+  <div className="flex flex-col w-5 h-3.5 rounded-[2px] overflow-hidden border border-white/10 shrink-0">
+    <div className="h-1/3 bg-[#FF9933]" />
+    <div className="h-1/3 bg-white flex items-center justify-center">
+      <div className="w-[3px] h-[3px] rounded-full border-[0.5px] border-[#000080]" />
+    </div>
+    <div className="h-1/3 bg-[#138808]" />
+  </div>
+);
+
+export default function AdminPanel({ onClose, logoUrl }: AdminPanelProps) {
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [newMarkup, setNewMarkup] = useState("");
+  const [newLogoUrl, setNewLogoUrl] = useState(logoUrl || "");
   const [updatingMarkup, setUpdatingMarkup] = useState(false);
+  const [updatingLogo, setUpdatingLogo] = useState(false);
   const [adminTab, setAdminTab] = useState<"dashboard" | "payments">("dashboard");
   const [allPayments, setAllPayments] = useState<any[]>([]);
+
+  const handleUpdateLogo = async (e: FormEvent) => {
+    e.preventDefault();
+    setUpdatingLogo(true);
+    try {
+      const settingsRef = doc(db, "settings", "branding");
+      await setDoc(settingsRef, { 
+        logoUrl: newLogoUrl,
+        updatedAt: serverTimestamp() 
+      }, { merge: true });
+      alert("Logo URL updated successfully!");
+    } catch (e) {
+      handleFirestoreError(e, 'write', 'settings/branding');
+    } finally {
+      setUpdatingLogo(false);
+    }
+  };
 
   useEffect(() => {
     // Real-time payments sync
@@ -67,7 +102,7 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
             
             // Notification toast
             if (Notification.permission === "granted") {
-              new Notification("TrendzyHubX: New Fund Request!", {
+              new Notification("SMMFLOW: New Fund Request!", {
                 body: `You have ${newPending} pending payments waiting for approval.`,
                 icon: "/favicon.ico"
               });
@@ -201,15 +236,17 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
       <header className="bg-slate-900 border-b border-slate-800 p-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-xl text-slate-400 transition-colors"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
+            <div className="flex items-center -space-x-1.5">
+              <div className="relative z-10 w-10 h-10 rounded-full border-2 border-slate-950 overflow-hidden bg-slate-900 flex items-center justify-center">
+                <OwnerAvatar url={logoUrl} />
+              </div>
+              <div className="w-8 h-6 bg-slate-900 border border-slate-800 rounded flex items-center justify-center shadow-lg">
+                <IndianFlag />
+              </div>
+            </div>
             <div>
-              <h1 className="text-xl font-black text-white tracking-tight">ADMIN DASHBOARD</h1>
-              <p className="text-[10px] font-bold text-emerald-500 uppercase">TrendzyHubX Management</p>
+              <h1 className="text-xl font-black italic tracking-tighter text-white leading-none">SMMFLOW DASHBOARD</h1>
+              <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-tighter">Managed by GAUTAM TIWARI</p>
             </div>
           </div>
 
@@ -348,6 +385,45 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
                   </div>
                 </div>
 
+                 {/* Branding Management */}
+                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                      <Sparkles className="w-6 h-6 text-amber-500" /> BRANDING MANAGEMENT
+                    </h3>
+                  </div>
+
+                  <form onSubmit={handleUpdateLogo} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Founder Photo URL</label>
+                      <div className="flex gap-4">
+                        <input 
+                          type="url"
+                          value={newLogoUrl}
+                          onChange={(e) => setNewLogoUrl(e.target.value)}
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-500 transition-all font-mono text-xs"
+                          placeholder="https://example.com/photo.jpg"
+                        />
+                        <button 
+                          type="submit"
+                          disabled={updatingLogo}
+                          className="px-6 py-3 bg-white hover:bg-slate-200 disabled:opacity-50 text-slate-950 font-black rounded-xl transition-all uppercase text-[10px] tracking-widest"
+                        >
+                          {updatingLogo ? "Saving..." : "Update Logo"}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 p-4 bg-slate-950/50 border border-slate-800/50 rounded-2xl">
+                      <OwnerAvatar size="w-12 h-12" url={newLogoUrl} />
+                      <div>
+                        <p className="text-white text-xs font-bold">Logo Preview</p>
+                        <p className="text-slate-500 text-[10px]">This will be shown as your "#1" branding image.</p>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+
                 {/* Quick Actions */}
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6">
                   <h3 className="text-xl font-black text-white tracking-tight">QUICK ACTIONS</h3>
@@ -466,8 +542,9 @@ export default function AdminPanel({ onClose }: AdminPanelProps) {
         </div>
       </main>
 
-      <footer className="p-4 bg-slate-900 border-t border-slate-800 text-center">
-        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">TrendzyHubX Management Interface • v1.0.4 • 2026</p>
+      <footer className="p-4 bg-slate-900 border-t border-slate-800 text-center flex flex-col items-center gap-2">
+        <IndianFlag />
+        <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">SMMFLOW Management Interface • v1.0.4 • 2026</p>
       </footer>
     </div>
   );

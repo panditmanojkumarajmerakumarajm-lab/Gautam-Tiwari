@@ -53,6 +53,18 @@ import { onAuthStateChanged, User } from "firebase/auth";
 const OWNER_WHATSAPP = "918955932061";
 const OWNER_UPI = "8955932061@ptyes";
 
+import { OwnerAvatar } from "./components/OwnerAvatar";
+
+const IndianFlag = () => (
+  <div className="flex flex-col w-5 h-3.5 rounded-[2px] overflow-hidden border border-white/10 shrink-0 shadow-sm">
+    <div className="h-1/3 bg-[#FF9933]" />
+    <div className="h-1/3 bg-white flex items-center justify-center">
+      <div className="w-[3px] h-[3px] rounded-full border-[0.5px] border-[#000080]" />
+    </div>
+    <div className="h-1/3 bg-[#138808]" />
+  </div>
+);
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -73,6 +85,7 @@ export default function App() {
   const [userBalance, setUserBalance] = useState<number>(0);
   const [pendingPayments, setPendingPayments] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [platformSettings, setPlatformSettings] = useState<any>(null);
   
   const [hasSpun, setHasSpun] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
@@ -82,6 +95,20 @@ export default function App() {
     link: "",
     quantity: "1000"
   });
+
+  useEffect(() => {
+    // Sync platform settings (logo, etc)
+    const settingsRef = doc(db, "settings", "branding");
+    const unsubscribe = onSnapshot(settingsRef, 
+      (snap) => {
+        if (snap.exists()) {
+          setPlatformSettings(snap.data());
+        }
+      },
+      (err) => console.warn("Failed to sync branding settings", err)
+    );
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -301,7 +328,7 @@ export default function App() {
     const baseUrl = `${scheme}://pay`;
     const params = new URLSearchParams({
       pa: OWNER_UPI,
-      pn: "TrendzyHubX",
+      pn: "SMMFLOW",
       am: amount.toString(),
       cu: "INR",
       tn: `Order_${selectedService.service}`
@@ -378,13 +405,13 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">Initializing TrendzyHubX Security...</p>
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">Initializing SMMFLOW Security...</p>
       </div>
     );
   }
 
   if (!currentUser) {
-    return <Login />;
+    return <Login logoUrl={platformSettings?.logoUrl} />;
   }
 
   return (
@@ -392,12 +419,17 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/80 border-b border-slate-900 px-4">
         <div className="max-w-4xl mx-auto h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-slate-950" />
+          <div className="flex items-center gap-3">
+            <div className="flex items-center -space-x-1.5">
+              <div className="relative z-10 w-10 h-10 rounded-full border-2 border-slate-950 overflow-hidden bg-slate-900 flex items-center justify-center">
+                <OwnerAvatar size="w-10 h-10" url={platformSettings?.logoUrl} />
+              </div>
+              <div className="w-8 h-6 bg-slate-900 border border-slate-800 rounded flex items-center justify-center shadow-lg">
+                <IndianFlag />
+              </div>
             </div>
             <div className="flex flex-col">
-              <h1 className="text-xl font-bold tracking-tight text-white leading-none">TrendzyHubX</h1>
+              <h1 className="text-xl font-black italic tracking-tighter text-white leading-none">SMMFLOW</h1>
               <span className="text-[8px] font-black text-emerald-500 uppercase tracking-tighter">Managed by GAUTAM TIWARI</span>
             </div>
           </div>
@@ -506,7 +538,7 @@ export default function App() {
 
             <div className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x px-2 -mx-2 bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
               {[
-                { id: "All", name: "All", icon: <Sparkles className="w-5 h-5" />, activeClass: "bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-emerald-500/10", iconBg: "bg-emerald-500/20" },
+                { id: "All", name: "All", icon: <OwnerAvatar bordered={false} size="w-7 h-7" url={platformSettings?.logoUrl} />, activeClass: "bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-emerald-500/10", iconBg: "bg-emerald-500/20" },
                 { id: "Instagram", name: "Instagram", icon: <Instagram className="w-5 h-5" />, activeClass: "bg-pink-500/10 border-pink-500/50 text-pink-500 shadow-pink-500/10", iconBg: "bg-pink-500/20" },
                 { id: "YouTube", name: "YouTube", icon: <Youtube className="w-5 h-5" />, activeClass: "bg-red-500/10 border-red-500/50 text-red-500 shadow-red-500/10", iconBg: "bg-red-500/20" },
                 { id: "Facebook", name: "Facebook", icon: <Facebook className="w-5 h-5" />, activeClass: "bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-blue-500/10", iconBg: "bg-blue-500/20" },
@@ -646,7 +678,7 @@ export default function App() {
               <p className="text-slate-400 max-w-md mx-auto">Join our reseller program and start making money by providing social media services to others.</p>
             </div>
             <a 
-              href={`https://wa.me/${OWNER_WHATSAPP}?text=Hi, I want to start earning with TrendzyHubX. Please guide me about the reseller program.`}
+              href={`https://wa.me/${OWNER_WHATSAPP}?text=Hi, I want to start earning with SMMFLOW. Please guide me about the reseller program.`}
               target="_blank"
               rel="noopener noreferrer"
               className="w-full sm:w-auto px-12 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-2xl transition-all flex items-center justify-center gap-3 shadow-xl shadow-emerald-500/20 group"
@@ -747,7 +779,7 @@ export default function App() {
         <section className="space-y-6 pt-8">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <a 
-              href={`upi://pay?pa=${OWNER_UPI}&pn=TrendzyHubX&cu=INR`}
+              href={`upi://pay?pa=${OWNER_UPI}&pn=SMMFLOW&cu=INR`}
               className="flex flex-col items-center justify-center p-6 rounded-2xl bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all group"
             >
               <CreditCard className="w-8 h-8 mb-3 group-hover:scale-110 transition-transform" />
@@ -798,8 +830,8 @@ export default function App() {
       <footer className="bg-slate-900 border-t border-slate-800 py-12">
         <div className="max-w-4xl mx-auto px-4 text-center space-y-6">
           <div className="flex items-center justify-center gap-2">
-            <TrendingUp className="w-6 h-6 text-emerald-500" />
-            <span className="text-xl font-bold text-white">TrendzyHubX</span>
+            <IndianFlag />
+            <span className="text-xl font-bold text-white">SMMFLOW</span>
           </div>
           <div className="text-slate-400 text-sm space-y-2">
             <p className="text-emerald-500 font-bold tracking-widest uppercase text-xs">Managed by GAUTAM TIWARI</p>
@@ -808,7 +840,7 @@ export default function App() {
             <p className="font-mono">UPI: {OWNER_UPI}</p>
           </div>
           <p className="text-slate-600 text-xs text-center border-t border-slate-800 pt-8 mt-8">
-            © {new Date().getFullYear()} TrendzyHubX Services. All rights reserved.
+            © {new Date().getFullYear()} SMMFLOW Services. All rights reserved.
           </p>
           {currentUser && (
             <div className="flex justify-center mt-12 opacity-[0.03] hover:opacity-10 transition-opacity">
@@ -827,12 +859,13 @@ export default function App() {
               onClose={() => setShowAddFunds(false)} 
               onSubmit={handleAddFundsSubmit}
               pendingPayments={pendingPayments}
+              logoUrl={platformSettings?.logoUrl}
             />
           )}
         </AnimatePresence>
 
         <AnimatePresence>
-          {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+          {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} logoUrl={platformSettings?.logoUrl} />}
         </AnimatePresence>
 
         {/* Discount Spinner Modal */}

@@ -1,5 +1,14 @@
 {
   "entities": {
+    "Settings": {
+      "title": "Settings",
+      "description": "Global configuration document",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string", "description": "URL of the founder/logo image" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "User": {
       "title": "User",
       "description": "User profile and balance information",
@@ -58,6 +67,10 @@
     "/admins/{adminId}": {
       "schema": { "type": "object", "properties": { "role": { "type": "string" } } },
       "description": "Admin access control list"
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Global app configuration including branding and logo URLs"
     }
   }
 }

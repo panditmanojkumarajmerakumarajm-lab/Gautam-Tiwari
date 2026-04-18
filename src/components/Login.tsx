@@ -2,7 +2,23 @@ import { motion } from "motion/react";
 import { TrendingUp, LogIn, ShieldCheck, Zap, MessageCircle } from "lucide-react";
 import { signInWithGoogle } from "../lib/firebase";
 
-export default function Login() {
+import { OwnerAvatar } from "./OwnerAvatar";
+
+const IndianFlag = () => (
+  <div className="flex flex-col w-8 h-6 rounded-[2px] overflow-hidden border border-white/10 shrink-0">
+    <div className="h-1/3 bg-[#FF9933]" />
+    <div className="h-1/3 bg-white flex items-center justify-center">
+      <div className="w-[4px] h-[4px] rounded-full border-[0.5px] border-[#000080]" />
+    </div>
+    <div className="h-1/3 bg-[#138808]" />
+  </div>
+);
+
+interface LoginProps {
+  logoUrl?: string;
+}
+
+export default function Login({ logoUrl }: LoginProps) {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-emerald-500/30">
       <motion.div 
@@ -13,12 +29,17 @@ export default function Login() {
         {/* Logo Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center rotate-3 shadow-xl shadow-emerald-500/20">
-              <TrendingUp className="w-7 h-7 text-slate-950" />
+            <div className="flex items-center -space-x-2">
+              <div className="relative z-10 w-16 h-16 rounded-full border-4 border-slate-950 overflow-hidden bg-slate-900 shadow-2xl flex items-center justify-center">
+                <OwnerAvatar size="w-16 h-16" url={logoUrl} />
+              </div>
+              <div className="w-12 h-8 bg-slate-900 border border-slate-800 rounded-lg flex items-center justify-center shadow-xl rotate-6">
+                <IndianFlag />
+              </div>
             </div>
-            <h1 className="text-3xl font-black text-white tracking-tighter italic">TrendzyHubX</h1>
+            <h1 className="text-4xl font-black text-white tracking-tighter italic uppercase">SMMFLOW</h1>
           </div>
-          <p className="text-slate-400 text-sm font-medium">Premium SMM Panel for Professional Growth</p>
+          <p className="text-slate-400 text-sm font-medium">India's Premium SMM Growth Platform</p>
         </div>
 
         {/* Features Grid */}

@@ -17,9 +17,22 @@ interface AddFundsModalProps {
   onClose: () => void;
   onSubmit: (e: FormEvent, formData: any) => void;
   pendingPayments: any[];
+  logoUrl?: string;
 }
 
-export default function AddFundsModal({ onClose, onSubmit, pendingPayments }: AddFundsModalProps) {
+import { OwnerAvatar } from "./OwnerAvatar";
+
+const IndianFlag = () => (
+  <div className="flex flex-col w-5 h-3.5 rounded-[2px] overflow-hidden border border-white/10 shrink-0">
+    <div className="h-1/3 bg-[#FF9933]" />
+    <div className="h-1/3 bg-white flex items-center justify-center">
+      <div className="w-[3px] h-[3px] rounded-full border-[0.5px] border-[#000080]" />
+    </div>
+    <div className="h-1/3 bg-[#138808]" />
+  </div>
+);
+
+export default function AddFundsModal({ onClose, onSubmit, pendingPayments, logoUrl }: AddFundsModalProps) {
   const [tab, setTab] = useState<"pay" | "history">("pay");
   const [formData, setFormData] = useState({
     amount: "",
@@ -232,8 +245,14 @@ export default function AddFundsModal({ onClose, onSubmit, pendingPayments }: Ad
           )}
         </div>
 
-        <footer className="p-4 bg-slate-950/50 border-t border-slate-800 text-center">
-          <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest italic">Manual Verification • TrendzyHubX Security</p>
+        <footer className="p-4 bg-slate-950/50 border-t border-slate-800 text-center flex flex-col items-center gap-2">
+          <div className="flex items-center -space-x-1">
+            <OwnerAvatar url={logoUrl} />
+            <div className="scale-75 origin-right">
+              <IndianFlag />
+            </div>
+          </div>
+          <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest italic">Manual Verification • SMMFLOW Security</p>
         </footer>
       </motion.div>
     </div>
