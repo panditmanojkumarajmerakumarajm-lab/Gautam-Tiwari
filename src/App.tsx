@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, useEffect, useMemo } from "react";
 import { 
   Instagram, 
   Youtube, 
@@ -13,92 +13,251 @@ import {
   ShoppingBag,
   X,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Search,
+  ChevronRight,
+  Filter,
+  Loader2,
+  Twitter,
+  Music2,
+  Wallet,
+  QrCode,
+  PlusCircle,
+  History,
+  AlertCircle,
+  LogOut,
+  User as UserIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import AdminPanel from "./components/AdminPanel";
+import AddFundsModal from "./components/AddFundsModal";
+import Login from "./components/Login";
+import { 
+  auth, 
+  db, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc, 
+  serverTimestamp,
+  logout,
+  handleFirestoreError
+} from "./lib/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
 
 const OWNER_WHATSAPP = "918955932061";
-const OWNER_UPI = "8955932061@axl";
-
-const services = [
-  {
-    title: "Special Combo Offers",
-    icon: <Sparkles className="w-6 h-6 text-amber-500" />,
-    items: [
-      { name: "10K Followers + 1M Views", price: "₹999", amount: 999 },
-      { name: "50K Followers + 5M Views (5 Reels)", price: "₹2499", amount: 2499 },
-      { name: "100K Followers + 10M Views (10 Reels)", price: "₹4999", amount: 4999 },
-    ],
-    color: "border-amber-500/20 hover:border-amber-500/50",
-    bg: "bg-amber-500/5"
-  },
-  {
-    title: "Instagram Services",
-    icon: <Instagram className="w-6 h-6 text-pink-500" />,
-    items: [
-      { name: "Followers", price: "₹129 / 1K", amount: 129 },
-      { name: "Followers (Budget)", price: "₹99 / 1K", amount: 99 },
-      { name: "Likes", price: "₹29 / 1K", amount: 29 },
-      { name: "Saves", price: "₹9 / 1K", amount: 9 },
-      { name: "Shares", price: "₹5 / 1K", amount: 5 },
-      { name: "Comments", price: "₹99 / 1K", amount: 99 },
-      { name: "Repost", price: "₹47 / 1K", amount: 47 },
-      { name: "Story Views", price: "₹49 / 1K", amount: 49 },
-      { name: "1 Million Views", price: "₹399 / 1M", amount: 399 },
-    ],
-    color: "border-pink-500/20 hover:border-pink-500/50",
-    bg: "bg-pink-500/5"
-  },
-  {
-    title: "YouTube Services",
-    icon: <Youtube className="w-6 h-6 text-red-500" />,
-    items: [
-      { name: "Subscribers", price: "₹1000 / 1K", amount: 1000 },
-      { name: "Views", price: "₹299 / 1K", amount: 299 },
-      { name: "Likes", price: "₹199 / 1K", amount: 199 },
-      { name: "Comments", price: "₹149 / 1K", amount: 149 },
-    ],
-    color: "border-red-500/20 hover:border-red-500/50",
-    bg: "bg-red-500/5"
-  },
-  {
-    title: "Facebook Services",
-    icon: <Facebook className="w-6 h-6 text-blue-500" />,
-    items: [
-      { name: "Followers", price: "₹61 / 1K", amount: 61 },
-      { name: "Views", price: "₹9 / 1K", amount: 9 },
-      { name: "Reactions", price: "₹19 / 1K", amount: 19 },
-      { name: "Comments", price: "Coming Soon", special: true, amount: 0 },
-    ],
-    color: "border-blue-500/20 hover:border-blue-500/50",
-    bg: "bg-blue-500/5"
-  },
-  {
-    title: "Telegram Services",
-    icon: <Send className="w-6 h-6 text-sky-500" />,
-    items: [
-      { name: "Members", price: "₹30 / 1K", amount: 30 },
-    ],
-    color: "border-sky-500/20 hover:border-sky-500/50",
-    bg: "bg-sky-500/5"
-  },
-];
+const OWNER_UPI = "8955932061@ptyes";
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [userData, setUserData] = useState<any>(null);
+
+  const [apiServices, setApiServices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("All");
+  
   const [selectedService, setSelectedService] = useState<any>(null);
   const [appliedDiscount, setAppliedDiscount] = useState<number>(0);
   const [showSpinner, setShowSpinner] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAddFunds, setShowAddFunds] = useState(false);
+  const [userBalance, setUserBalance] = useState<number>(0);
+  const [pendingPayments, setPendingPayments] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  
   const [hasSpun, setHasSpun] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   
   const [formData, setFormData] = useState({
     link: "",
-    mobile: "",
-    transactionId: "",
-    referralCode: "",
     quantity: "1000"
   });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        // Sync user profile
+        const userRef = doc(db, "users", user.uid);
+        
+        try {
+          const userSnap = await getDoc(userRef);
+          
+          if (!userSnap.exists()) {
+            const newProfile = {
+              email: user.email,
+              displayName: user.displayName,
+              balance: 0,
+              createdAt: serverTimestamp(),
+              lastLogin: serverTimestamp()
+            };
+            await setDoc(userRef, newProfile);
+            setUserData(newProfile);
+            setUserBalance(0);
+          } else {
+            const data = userSnap.data();
+            setUserData(data);
+            setUserBalance(data.balance || 0);
+            await updateDoc(userRef, { lastLogin: serverTimestamp() });
+          }
+        } catch (e) {
+          handleFirestoreError(e, 'get', `users/${user.uid}`);
+        }
+
+        // Check Admin Status
+        try {
+          const adminSnap = await getDoc(doc(db, "admins", user.uid));
+          const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+          
+          if (!adminSnap.exists() && isHardcodedAdmin) {
+            await setDoc(doc(db, "admins", user.uid), {
+              email: user.email,
+              role: "admin",
+              assignedAt: serverTimestamp()
+            });
+            setIsAdmin(true);
+          } else {
+            setIsAdmin(adminSnap.exists());
+          }
+        } catch (e) {
+          // If admin check fails, assume not admin but don't crash the whole flow
+          console.warn("Admin check failed", e);
+          const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+          setIsAdmin(isHardcodedAdmin);
+        }
+
+        // Listen for Real-time Balance & Data updates
+        onSnapshot(userRef, 
+          (doc) => {
+            if (doc.exists()) {
+              setUserData(doc.data());
+              setUserBalance(doc.data().balance || 0);
+            }
+          },
+          (err) => handleFirestoreError(err, 'get', `users/${user.uid}`)
+        );
+
+        // Listen for user's payments
+        const q = query(collection(db, "payments"), where("userId", "==", user.uid));
+        onSnapshot(q, 
+          (snapshot) => {
+            const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setPendingPayments(payments.sort((a: any, b: any) => {
+              const dateA = a.timestamp?.seconds || 0;
+              const dateB = b.timestamp?.seconds || 0;
+              return dateB - dateA;
+            }));
+          },
+          (err) => handleFirestoreError(err, 'list', 'payments')
+        );
+      } else {
+        setUserData(null);
+        setUserBalance(0);
+        setPendingPayments([]);
+        setIsAdmin(false);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    fetchServices();
+  }, []);
+
+  const handleAddFundsSubmit = async (e: FormEvent, data: any) => {
+    e.preventDefault();
+    if (!currentUser) return;
+
+    try {
+      const paymentData = {
+        userId: currentUser.uid,
+        email: currentUser.email,
+        amount: parseFloat(data.amount),
+        utr: data.utr,
+        status: "pending",
+        timestamp: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, "payments"), paymentData);
+      
+      const whatsappMessage = `*Fund Deposit Alert*%0A%0A` +
+        `*Email:* ${currentUser.email}%0A` +
+        `*Amount:* ₹${data.amount}%0A` +
+        `*UTR:* ${data.utr}%0A%0A` +
+        `_Please approve my deposit so I can place my order._`;
+      
+      const waUrl = `https://wa.me/${OWNER_WHATSAPP}?text=${whatsappMessage}`;
+      
+      alert("Payment submitted in system!");
+      
+      if (confirm("Would you like to notify Admin on WhatsApp for instant approval?")) {
+        window.open(waUrl, "_blank");
+      }
+      
+      setShowAddFunds(false);
+    } catch (err) {
+      alert("Submission failed. Try again.");
+    }
+  };
+  const fetchServices = async () => {
+    try {
+      const res = await fetch("/api/services");
+      const data = await res.json();
+      if (data.success) {
+        setApiServices(data.services);
+      }
+    } catch (err) {
+      console.error("Failed to fetch services", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(apiServices.map(s => s.category)));
+    return ["All", ...cats.sort()];
+  }, [apiServices]);
+
+  const filteredServices = useMemo(() => {
+    return apiServices.filter(s => {
+      const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                           s.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === "All" || s.category === selectedCategory;
+      
+      let matchesPlatform = true;
+      if (selectedPlatform !== "All") {
+        const cat = s.category.toLowerCase();
+        const name = s.name.toLowerCase();
+        if (selectedPlatform === "Instagram") {
+          matchesPlatform = /\b(ig|instagram|insta)\b/i.test(cat) || /\b(ig|instagram|insta)\b/i.test(name);
+        } else if (selectedPlatform === "YouTube") {
+          matchesPlatform = /\b(yt|youtube)\b/i.test(cat) || /\b(yt|youtube)\b/i.test(name);
+        } else if (selectedPlatform === "Facebook") {
+          matchesPlatform = /\b(fb|facebook)\b/i.test(cat) || /\b(fb|facebook)\b/i.test(name);
+        } else if (selectedPlatform === "Telegram") {
+          matchesPlatform = /\b(telegram|tg)\b/i.test(cat) || /\b(telegram|tg)\b/i.test(name);
+        } else if (selectedPlatform === "TikTok") {
+          matchesPlatform = /\b(tiktok|tk)\b/i.test(cat) || /\b(tiktok|tk)\b/i.test(name);
+        } else if (selectedPlatform === "Twitter") {
+          matchesPlatform = /\b(twitter|x|twt)\b/i.test(cat) || /\b(twitter|x|twt)\b/i.test(name);
+        }
+      }
+
+      return matchesSearch && matchesCategory && matchesPlatform;
+    });
+  }, [apiServices, searchQuery, selectedCategory, selectedPlatform]);
 
   const handleSpin = () => {
     if (hasSpun || isSpinning) return;
@@ -124,26 +283,28 @@ export default function App() {
     }, 4000);
   };
 
-  const calculateDiscountedPrice = (price: number) => {
-    if (appliedDiscount === 0) return price;
-    const discount = (price * appliedDiscount) / 100;
-    return Math.floor(price - discount);
+  const calculateDiscountedPrice = (rate: number, quantity: number) => {
+    const basePrice = (rate * quantity) / 1000;
+    if (appliedDiscount === 0) return Math.ceil(basePrice);
+    const discount = (basePrice * appliedDiscount) / 100;
+    return Math.ceil(basePrice - discount);
   };
 
-  const handleServiceClick = (service: any, category: string) => {
-    if (service.special) return;
-    setSelectedService({ ...service, category });
+  const handleServiceClick = (service: any) => {
+    setSelectedService(service);
+    setFormData(prev => ({ ...prev, quantity: service.min.toString() }));
   };
 
   const getUpiUrl = (scheme: string = "upi") => {
     if (!selectedService) return "";
+    const amount = calculateDiscountedPrice(parseFloat(selectedService.rate), parseInt(formData.quantity));
     const baseUrl = `${scheme}://pay`;
     const params = new URLSearchParams({
       pa: OWNER_UPI,
       pn: "TrendzyHubX",
-      am: selectedService.amount.toString(),
+      am: amount.toString(),
       cu: "INR",
-      tn: `Order_${selectedService.name.replace(/\s+/g, '_')}`
+      tn: `Order_${selectedService.service}`
     });
     return `${baseUrl}?${params.toString()}`;
   };
@@ -153,34 +314,84 @@ export default function App() {
     alert("UPI ID Copied! Now you can pay manually from any app.");
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
-    const finalPrice = calculateDiscountedPrice(selectedService.amount);
-    const discountText = appliedDiscount > 0 ? `%0A*Discount Applied:* ${appliedDiscount}%25 (₹${selectedService.amount - finalPrice} Off)` : "";
+    if (!selectedService) return;
 
-    const message = `*New Order from TrendzyHubX*%0A%0A` +
-      `*Service:* ${selectedService.category} - ${selectedService.name}%0A` +
-      `*Original Price:* ₹${selectedService.amount}%0A` +
-      `*Final Price:* ₹${finalPrice}${discountText}%0A` +
-      `*Quantity:* ${formData.quantity}%0A` +
-      `*Link:* ${formData.link}%0A` +
-      `*Mobile:* ${formData.mobile}%0A` +
-      `*Transaction ID:* ${formData.transactionId}%0A` +
-      `*Referral Code:* ${formData.referralCode || "None"}`;
-    
-    const whatsappUrl = `https://wa.me/${OWNER_WHATSAPP}?text=${message}`;
-    window.open(whatsappUrl, '_blank');
+    const qty = parseInt(formData.quantity);
+    const min = parseInt(selectedService.min);
+    const max = parseInt(selectedService.max);
 
-    setSelectedService(null);
-    setFormData({ link: "", mobile: "", transactionId: "", referralCode: "", quantity: "1000" });
+    if (qty < min || qty > max) {
+      alert(`Invalid Quantity! For this service, quantity must be between ${min} and ${max}.`);
+      return;
+    }
+
+    if (userBalance < calculateDiscountedPrice(parseFloat(selectedService.rate), qty)) {
+      alert("Insufficient wallet balance. Please add funds first!");
+      setShowAddFunds(true);
+      return;
+    }
+
+    setSubmittingOrder(true);
+    
+    const rate = parseFloat(selectedService.rate);
+    const finalPrice = calculateDiscountedPrice(rate, qty);
+
+    // Deduct balance in Firestore
+    try {
+      const userRef = doc(db, "users", currentUser!.uid);
+      await updateDoc(userRef, {
+        balance: userBalance - finalPrice
+      });
+
+      // Place order in background via API
+      const apiRes = await fetch("/api/place-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceId: selectedService.service,
+          link: formData.link,
+          quantity: formData.quantity
+        })
+      });
+      
+      const apiData = await apiRes.json();
+      
+      if (apiData.success) {
+        alert(`Order Placed Successfully! Order ID: ${apiData.orderId}`);
+        setSelectedService(null);
+        setFormData({ link: "", quantity: "1000" });
+      } else {
+        alert(`Order logged but panel returned an error: ${apiData.message}\n\nOur team will check it manually.`);
+        setSelectedService(null);
+      }
+    } catch (err) {
+      console.error("Failed to place order", err);
+      alert("Order failed. Please contact support.");
+    } finally {
+      setSubmittingOrder(false);
+    }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">Initializing TrendzyHubX Security...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <Login />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
       {/* Header */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/80 border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+      <header className="sticky top-0 z-50 backdrop-blur-md bg-slate-950/80 border-b border-slate-900 px-4">
+        <div className="max-w-4xl mx-auto h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-slate-950" />
@@ -190,10 +401,47 @@ export default function App() {
               <span className="text-[8px] font-black text-emerald-500 uppercase tracking-tighter">Managed by GAUTAM TIWARI</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full">
-              <Zap className="w-3 h-3" /> Fast Delivery
-            </span>
+          
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-2xl group transition-all">
+              <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 group-hover:bg-emerald-500/20">
+                <UserIcon className="w-3.5 h-3.5 text-emerald-500" />
+              </div>
+              <span className="text-[10px] font-black text-slate-300 truncate max-w-[80px] uppercase tracking-wider">
+                {userData?.displayName?.split(' ')[0] || "Trader"}
+              </span>
+            </div>
+
+            {/* Wallet Quick View */}
+            <button 
+              onClick={() => setShowAddFunds(true)}
+              className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-4 py-2 rounded-2xl hover:border-emerald-500/50 transition-all group shadow-lg active:scale-95 relative"
+            >
+              {isAdmin && pendingPayments.filter(p => p.status === "pending").length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 text-[10px] items-center justify-center font-black text-slate-950">
+                    {pendingPayments.filter(p => p.status === "pending").length}
+                  </span>
+                </span>
+              )}
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 transition-all">
+                <Wallet className="w-4 h-4 text-emerald-500" />
+              </div>
+              <div className="flex flex-col items-start leading-none gap-0.5">
+                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Balance</span>
+                <span className="text-sm font-black text-white italic">₹{userBalance.toFixed(2)}</span>
+              </div>
+              <PlusCircle className="w-4 h-4 text-slate-500 group-hover:text-emerald-500 transition-colors" />
+            </button>
+
+            <button 
+              onClick={logout}
+              className="p-3 bg-slate-900 border border-slate-800 rounded-2xl text-slate-400 hover:text-red-500 hover:border-red-500/50 transition-all active:scale-95"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -249,60 +497,116 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* Services Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {services.map((section, idx) => (
-            <motion.div
-              key={section.title}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.1 }}
-              className={`p-6 rounded-2xl border ${section.color} ${section.bg} transition-all duration-300 group`}
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 group-hover:scale-110 transition-transform">
-                  {section.icon}
-                </div>
-                <h3 className="text-xl font-bold text-white">{section.title}</h3>
-              </div>
-              <div className="space-y-3">
-                {section.items.map((item) => (
-                  <div
-                    key={item.name}
-                    className="w-full flex justify-between items-center py-3 px-4 rounded-xl border border-slate-800/50 bg-slate-900/30 group/item transition-all"
-                  >
-                    <div className="flex flex-col">
-                      <span className="text-slate-300 font-medium group-hover/item:text-white transition-colors">{item.name}</span>
-                      <div className="flex items-center gap-2">
-                        {appliedDiscount > 0 && !item.special ? (
-                          <>
-                            <span className="text-emerald-400 font-bold text-sm">
-                              ₹{calculateDiscountedPrice(item.amount)}
-                            </span>
-                            <span className="text-slate-500 line-through text-[10px]">
-                              ₹{item.amount}
-                            </span>
-                          </>
-                        ) : (
-                          <span className={`font-bold text-sm ${item.special ? 'text-slate-500 italic' : 'text-emerald-400'}`}>
-                            {item.price}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {!item.special && (
-                      <button
-                        onClick={() => handleServiceClick(item, section.title)}
-                        className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 shadow-lg shadow-emerald-500/10 active:scale-95"
-                      >
-                        BUY NOW <Zap className="w-3 h-3 fill-current" />
-                      </button>
-                    )}
+        {/* Services Section */}
+        <section className="space-y-8">
+          <div className="space-y-6">
+            <h3 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+              <ShoppingBag className="w-6 h-6 text-emerald-500" /> OUR SERVICES
+            </h3>
+
+            <div className="flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x px-2 -mx-2 bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
+              {[
+                { id: "All", name: "All", icon: <Sparkles className="w-5 h-5" />, activeClass: "bg-emerald-500/10 border-emerald-500/50 text-emerald-500 shadow-emerald-500/10", iconBg: "bg-emerald-500/20" },
+                { id: "Instagram", name: "Instagram", icon: <Instagram className="w-5 h-5" />, activeClass: "bg-pink-500/10 border-pink-500/50 text-pink-500 shadow-pink-500/10", iconBg: "bg-pink-500/20" },
+                { id: "YouTube", name: "YouTube", icon: <Youtube className="w-5 h-5" />, activeClass: "bg-red-500/10 border-red-500/50 text-red-500 shadow-red-500/10", iconBg: "bg-red-500/20" },
+                { id: "Facebook", name: "Facebook", icon: <Facebook className="w-5 h-5" />, activeClass: "bg-blue-500/10 border-blue-500/50 text-blue-500 shadow-blue-500/10", iconBg: "bg-blue-500/20" },
+                { id: "Telegram", name: "Telegram", icon: <Send className="w-5 h-5" />, activeClass: "bg-sky-500/10 border-sky-500/50 text-sky-500 shadow-sky-500/10", iconBg: "bg-sky-500/20" },
+                { id: "TikTok", name: "TikTok", icon: <Music2 className="w-5 h-5" />, activeClass: "bg-slate-200/10 border-slate-200/50 text-slate-200 shadow-slate-200/10", iconBg: "bg-slate-200/20" },
+                { id: "Twitter", name: "Twitter", icon: <Twitter className="w-5 h-5" />, activeClass: "bg-sky-400/10 border-sky-400/50 text-sky-400 shadow-sky-400/10", iconBg: "bg-sky-400/20" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setSelectedPlatform(p.id);
+                    setSelectedCategory("All"); // Reset category when platform changes
+                  }}
+                  className={`flex flex-col items-center gap-2 px-6 py-4 rounded-2xl transition-all duration-300 min-w-[100px] border-2 shadow-lg ${
+                    selectedPlatform === p.id 
+                    ? `${p.activeClass} scale-105` 
+                    : "bg-slate-950/50 border-transparent text-slate-500 hover:border-slate-700 hover:text-slate-300 shadow-transparent"
+                  }`}
+                >
+                  <div className={`p-3 rounded-xl ${selectedPlatform === p.id ? p.iconBg : "bg-slate-900"}`}>
+                    {p.icon}
                   </div>
-                ))}
+                  <span className="text-xs font-black uppercase tracking-widest">{p.name}</span>
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                {/* Search */}
+                <div className="relative group w-full sm:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-emerald-500 transition-colors" />
+                  <input 
+                    type="text"
+                    placeholder="Search services (e.g. Followers, Likes)..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-300 focus:outline-none focus:border-emerald-500 transition-all"
+                  />
+                </div>
               </div>
-            </motion.div>
-          ))}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
+              <p className="text-slate-400 font-medium animate-pulse">Fetching latest services...</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(
+                filteredServices.reduce((acc, service) => {
+                  const cat = service.category;
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(service);
+                  return acc;
+                }, {} as Record<string, any[]>)
+              ).map(([category, services]: [string, any]) => (
+                <div key={category} className="space-y-3">
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] px-2 flex items-center gap-2">
+                    <span className="w-1 h-1 bg-emerald-500 rounded-full" /> {category}
+                  </h4>
+                  <div className="grid grid-cols-1 gap-3">
+                    {services.map((service, idx) => (
+                      <motion.div
+                        key={service.service}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        onClick={() => handleServiceClick(service)}
+                        className="group bg-slate-900/40 border border-slate-800/50 hover:border-emerald-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 transition-all cursor-pointer hover:bg-slate-900/60"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <h5 className="text-white font-bold text-sm truncate group-hover:text-emerald-400 transition-colors">
+                            {service.name}
+                          </h5>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-[10px] font-bold text-slate-500 italic">Min: {service.min} • Max: {service.max}</span>
+                            {service.refill && <span className="text-[10px] font-black text-emerald-500 uppercase tracking-tighter">✔ Refill</span>}
+                          </div>
+                        </div>
+                        
+                        <div className="text-right shrink-0">
+                          <span className="text-lg font-black text-emerald-500 italic">₹{service.rate}</span>
+                          <span className="text-[10px] text-slate-500 font-bold block">/ 1K</span>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              
+              {filteredServices.length === 0 && (
+                <div className="text-center py-20 bg-slate-900/30 rounded-3xl border border-dashed border-slate-800">
+                  <p className="text-slate-500 font-medium">No results found. Try a different search term.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
           {/* Extra Services Card */}
           <motion.div
@@ -350,7 +654,6 @@ export default function App() {
               START EARNING NOW <Zap className="w-5 h-5 fill-current group-hover:scale-125 transition-transform" />
             </a>
           </motion.div>
-        </div>
 
         {/* Order Details Modal */}
         <AnimatePresence>
@@ -375,92 +678,11 @@ export default function App() {
                   </div>
                   <h3 className="text-2xl font-bold text-white">Complete Payment</h3>
                   <p className="text-slate-400 text-sm">
-                    Select your preferred UPI app to pay ₹{selectedService.amount}
+                    Select your preferred UPI app to pay ₹{calculateDiscountedPrice(parseFloat(selectedService.rate), parseInt(formData.quantity))}
                   </p>
                 </div>
 
-                {/* App Selection Grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <a 
-                    href={getUpiUrl("phonepe")}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group"
-                  >
-                    <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-black text-xs">PP</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-300">PhonePe</span>
-                  </a>
-                  <a 
-                    href={getUpiUrl("googlepay")}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-blue-500/50 hover:bg-blue-500/5 transition-all group"
-                  >
-                    <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-black text-xs">GP</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-300">Google Pay</span>
-                  </a>
-                  <a 
-                    href={getUpiUrl("paytmmp")}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-sky-500/50 hover:bg-sky-500/5 transition-all group"
-                  >
-                    <div className="w-10 h-10 bg-sky-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-black text-xs">PT</span>
-                    </div>
-                    <span className="text-xs font-bold text-slate-300">Paytm</span>
-                  </a>
-                  <a 
-                    href={getUpiUrl("upi")}
-                    className="flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all group"
-                  >
-                    <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <Zap className="text-white w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-bold text-slate-300">Other Apps</span>
-                  </a>
-                </div>
-
-                {/* QR Code & Copy UPI */}
-                <div className="flex flex-col items-center gap-4 py-4 bg-slate-950 rounded-2xl border border-slate-800">
-                  <div className="text-center space-y-1 mb-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Or Scan QR Code</span>
-                  </div>
-                  <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=${OWNER_UPI}%26pn=TrendzyHubX%26am=${selectedService.amount}%26cu=INR`} 
-                    alt="UPI QR Code"
-                    className="w-32 h-32 rounded-lg border-4 border-white shadow-lg shadow-emerald-500/10"
-                  />
-                  <div className="flex flex-col items-center gap-2 w-full px-6">
-                    <button 
-                      type="button"
-                      onClick={() => copyToClipboard(OWNER_UPI)}
-                      className="w-full flex items-center justify-center gap-2 text-sm font-bold text-emerald-500 bg-emerald-500/10 px-4 py-3 rounded-xl border border-emerald-500/20 hover:bg-emerald-500/20 transition-all"
-                    >
-                      Copy UPI ID <CreditCard className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-500">Selected Service</span>
-                    <div className="text-right">
-                      {appliedDiscount > 0 ? (
-                        <div className="flex flex-col items-end">
-                          <span className="text-slate-500 line-through text-xs">₹{selectedService.amount}</span>
-                          <span className="text-emerald-500 font-bold">₹{calculateDiscountedPrice(selectedService.amount)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-emerald-500 font-bold">₹{selectedService.amount}</span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-white font-bold">{selectedService.category} - {selectedService.name}</p>
-                  {appliedDiscount > 0 && (
-                    <div className="mt-2 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20 inline-block">
-                      {appliedDiscount}% LUCKY DISCOUNT APPLIED
-                    </div>
-                  )}
-                </div>
+                {/* App Selection Grid - REMOVED since we use wallet */}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="space-y-1.5">
@@ -468,64 +690,52 @@ export default function App() {
                     <input 
                       required
                       type="url"
-                      placeholder="https://instagram.com/..."
+                      placeholder="Paste link here..."
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
                       value={formData.link}
                       onChange={(e) => setFormData({ ...formData, link: e.target.value })}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Quantity</label>
-                      <input 
-                        required
-                        type="number"
-                        placeholder="1000"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-                        value={formData.quantity}
-                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Mobile Number</label>
-                      <input 
-                        required
-                        type="tel"
-                        placeholder="9876543210"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-                        value={formData.mobile}
-                        onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Transaction ID (UTR)</label>
-                      <input 
-                        required
-                        type="text"
-                        placeholder="Enter 12-digit UTR number"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-                        value={formData.transactionId}
-                        onChange={(e) => setFormData({ ...formData, transactionId: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Referral Code (Optional)</label>
-                      <input 
-                        type="text"
-                        placeholder="Enter referral code if any"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
-                        value={formData.referralCode}
-                        onChange={(e) => setFormData({ ...formData, referralCode: e.target.value })}
-                      />
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Quantity</label>
+                    <input 
+                      required
+                      type="number"
+                      min={selectedService.min}
+                      max={selectedService.max}
+                      placeholder={`e.g. ${selectedService.min}`}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 transition-colors"
+                      value={formData.quantity}
+                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                    />
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between px-1">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase">
+                        Min: {selectedService.min} • Max: {selectedService.max}
+                      </p>
+                      {formData.quantity && !isNaN(parseInt(formData.quantity)) && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-tighter">Total Price:</span>
+                          <span className="text-sm font-black text-emerald-500 italic">
+                            ₹{calculateDiscountedPrice(parseFloat(selectedService.rate), parseInt(formData.quantity)).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button 
                     type="submit"
-                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                    disabled={submittingOrder}
+                    className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
                   >
-                    CONFIRM ORDER & PAY <Send className="w-4 h-4" />
+                    {submittingOrder ? (
+                      <>Processing... <Loader2 className="w-4 h-4 animate-spin" /></>
+                    ) : (
+                      <>
+                        CONFIRM & PAY ₹{formData.quantity && !isNaN(parseInt(formData.quantity)) ? calculateDiscountedPrice(parseFloat(selectedService.rate), parseInt(formData.quantity)).toFixed(2) : "0.00"}
+                        <Send className="w-4 h-4" />
+                      </>
+                    )}
                   </button>
                 </form>
               </motion.div>
@@ -597,10 +807,34 @@ export default function App() {
             <p className="font-mono">WhatsApp: {OWNER_WHATSAPP}</p>
             <p className="font-mono">UPI: {OWNER_UPI}</p>
           </div>
-          <p className="text-slate-600 text-xs">
+          <p className="text-slate-600 text-xs text-center border-t border-slate-800 pt-8 mt-8">
             © {new Date().getFullYear()} TrendzyHubX Services. All rights reserved.
           </p>
+          {currentUser && (
+            <div className="flex justify-center mt-12 opacity-[0.03] hover:opacity-10 transition-opacity">
+              <button 
+                onClick={() => setShowAdmin(true)}
+                className="text-[8px] font-black text-slate-400 hover:text-emerald-500 uppercase tracking-tighter"
+              >
+                ADMIN ACCESS PORTAL
+              </button>
+            </div>
+          )}
         </div>
+        <AnimatePresence>
+          {showAddFunds && (
+            <AddFundsModal 
+              onClose={() => setShowAddFunds(false)} 
+              onSubmit={handleAddFundsSubmit}
+              pendingPayments={pendingPayments}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+        </AnimatePresence>
+
         {/* Discount Spinner Modal */}
         <AnimatePresence>
           {showSpinner && (
