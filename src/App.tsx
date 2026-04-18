@@ -136,57 +136,58 @@ export default function App() {
           setInitializationStatus("Syncing Profile Data...");
           const userRef = doc(db, "users", user.uid);
           
-          try {
-            const userSnap = await getDoc(userRef);
-            
-            if (!userSnap.exists()) {
-              const newProfile = {
-                email: user.email,
-                displayName: user.displayName,
-                balance: 0,
-                createdAt: serverTimestamp(),
-                lastLogin: serverTimestamp()
-              };
-              await setDoc(userRef, newProfile);
-              setUserData(newProfile);
-              setUserBalance(0);
+          // Listen for Real-time Profile, Balance & Data updates
+          // This handles initial fetch AND real-time updates gracefully
+          const unsubscribeProfile = onSnapshot(userRef, async (snapshot) => {
+            if (!snapshot.exists()) {
+              // Create profile if it doesn't exist (One-time check)
+              try {
+                const newProfile = {
+                  email: user.email,
+                  displayName: user.displayName,
+                  balance: 0,
+                  createdAt: serverTimestamp(),
+                  lastLogin: serverTimestamp()
+                };
+                await setDoc(userRef, newProfile);
+                setUserData(newProfile);
+                setUserBalance(0);
+              } catch (e) {
+                console.warn("Profile creation deferred (likely offline)", e);
+              }
             } else {
-              const data = userSnap.data();
+              const data = snapshot.data();
               setUserData(data);
               setUserBalance(data.balance || 0);
-              await updateDoc(userRef, { lastLogin: serverTimestamp() });
             }
+          }, (err) => {
+            console.warn("Profile sync temporary failure (offline?):", err.message);
+          });
 
-            // Background checks
-            getDoc(doc(db, "admins", user.uid)).then(adminSnap => {
-              const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-              setIsAdmin(adminSnap.exists() || isHardcodedAdmin);
-            }).catch(() => {
-              const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-              setIsAdmin(isHardcodedAdmin);
-            });
+          // Check Admin Status (Deferred)
+          getDoc(doc(db, "admins", user.uid)).then(adminSnap => {
+            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+            setIsAdmin(adminSnap.exists() || isHardcodedAdmin);
+          }).catch(() => {
+            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+            setIsAdmin(isHardcodedAdmin);
+          });
 
-            // Listen for Real-time Balance & Data updates
-            onSnapshot(userRef, (doc) => {
-              if (doc.exists()) {
-                setUserData(doc.data());
-                setUserBalance(doc.data().balance || 0);
-              }
-            }, (err) => console.warn("Balance sync failed", err));
+          // Listen for user's payments
+          const q = query(collection(db, "payments"), where("userId", "==", user.uid));
+          const unsubscribePayments = onSnapshot(q, (snapshot) => {
+            const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setPendingPayments(payments.sort((a: any, b: any) => {
+              const dateA = a.timestamp?.seconds || 0;
+              const dateB = b.timestamp?.seconds || 0;
+              return dateB - dateA;
+            }));
+          }, (err) => console.warn("Payments sync failed", err));
 
-            // Listen for user's payments
-            const q = query(collection(db, "payments"), where("userId", "==", user.uid));
-            onSnapshot(q, (snapshot) => {
-              const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-              setPendingPayments(payments.sort((a: any, b: any) => {
-                const dateA = a.timestamp?.seconds || 0;
-                const dateB = b.timestamp?.seconds || 0;
-                return dateB - dateA;
-              }));
-            }, (err) => console.warn("Payments sync failed", err));
-          } catch (e) {
-            console.error("Background data sync error", e);
-          }
+          return () => {
+            unsubscribeProfile();
+            unsubscribePayments();
+          };
         } else {
           setUserData(null);
           setUserBalance(0);

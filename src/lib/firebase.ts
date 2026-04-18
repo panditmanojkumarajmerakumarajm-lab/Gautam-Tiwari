@@ -25,8 +25,10 @@ export const auth = getAuth(app);
 // Use memory cache and long polling to bypass iframe/proxy restrictions
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-  localCache: memoryLocalCache()
-});
+  localCache: memoryLocalCache(),
+  // Disable fetch streams as they can be problematic in some proxies/iframes
+  useFetchStreams: false
+} as any);
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -35,7 +37,9 @@ export const signInWithGoogle = async () => {
     return await signInWithPopup(auth, googleProvider);
   } catch (error: any) {
     if (error.code === 'auth/unauthorized-domain') {
-      console.error("Unauthorized Domain Error. Please add this domain to Firebase Console:", window.location.hostname);
+      const hostname = window.location.hostname;
+      console.error("Unauthorized Domain Error. PLEASE ADD THIS DOMAIN TO FIREBASE CONSOLE:", hostname);
+      console.info(`Go to Firebase Console -> Auth -> Settings -> Authorized Domains and add: ${hostname}`);
     }
     throw error;
   }
