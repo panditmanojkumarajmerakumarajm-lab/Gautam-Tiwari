@@ -110,12 +110,30 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  const [initializationStatus, setInitializationStatus] = useState("Initializing SMMFLOW Security...");
+
   useEffect(() => {
+    console.log("Starting Auth Initialization...");
+    
+    // Safety timeout: Never stay stuck on loading for more than 12 seconds
+    const timeout = setTimeout(() => {
+      if (authLoading) {
+        console.warn("Auth initialization timed out. Forcing UI load.");
+        setAuthLoading(false);
+      }
+    }, 12000);
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
+        console.log("Auth state detected:", user?.email || "Guest");
         setCurrentUser(user);
+        
+        // UNBLOCK UI INSTANTLY once we know who the user is
+        setAuthLoading(false);
+        clearTimeout(timeout);
+
         if (user) {
-          // Sync user profile
+          setInitializationStatus("Syncing Profile Data...");
           const userRef = doc(db, "users", user.uid);
           
           try {
@@ -138,56 +156,37 @@ export default function App() {
               setUserBalance(data.balance || 0);
               await updateDoc(userRef, { lastLogin: serverTimestamp() });
             }
-          } catch (e) {
-            console.error("Profile sync error", e);
-            // Don't throw here to allow app to load
-          }
 
-          // Check Admin Status
-          try {
-            const adminSnap = await getDoc(doc(db, "admins", user.uid));
-            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-            
-            if (!adminSnap.exists() && isHardcodedAdmin) {
-              await setDoc(doc(db, "admins", user.uid), {
-                email: user.email,
-                role: "admin",
-                assignedAt: serverTimestamp()
-              });
-              setIsAdmin(true);
-            } else {
-              setIsAdmin(adminSnap.exists());
-            }
-          } catch (e) {
-            console.warn("Admin check failed", e);
-            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-            setIsAdmin(isHardcodedAdmin);
-          }
+            // Background checks
+            getDoc(doc(db, "admins", user.uid)).then(adminSnap => {
+              const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+              setIsAdmin(adminSnap.exists() || isHardcodedAdmin);
+            }).catch(() => {
+              const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+              setIsAdmin(isHardcodedAdmin);
+            });
 
-          // Listen for Real-time Balance & Data updates
-          onSnapshot(userRef, 
-            (doc) => {
+            // Listen for Real-time Balance & Data updates
+            onSnapshot(userRef, (doc) => {
               if (doc.exists()) {
                 setUserData(doc.data());
                 setUserBalance(doc.data().balance || 0);
               }
-            },
-            (err) => console.warn("Balance sync failed", err)
-          );
+            }, (err) => console.warn("Balance sync failed", err));
 
-          // Listen for user's payments
-          const q = query(collection(db, "payments"), where("userId", "==", user.uid));
-          onSnapshot(q, 
-            (snapshot) => {
+            // Listen for user's payments
+            const q = query(collection(db, "payments"), where("userId", "==", user.uid));
+            onSnapshot(q, (snapshot) => {
               const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
               setPendingPayments(payments.sort((a: any, b: any) => {
                 const dateA = a.timestamp?.seconds || 0;
                 const dateB = b.timestamp?.seconds || 0;
                 return dateB - dateA;
               }));
-            },
-            (err) => console.warn("Payments sync failed", err)
-          );
+            }, (err) => console.warn("Payments sync failed", err));
+          } catch (e) {
+            console.error("Background data sync error", e);
+          }
         } else {
           setUserData(null);
           setUserBalance(0);
@@ -195,13 +194,15 @@ export default function App() {
           setIsAdmin(false);
         }
       } catch (err) {
-        console.error("Auth state change error:", err);
-      } finally {
+        console.error("Auth state change fatal error:", err);
         setAuthLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   useEffect(() => {
@@ -256,9 +257,9 @@ export default function App() {
       } else {
         setApiError(data.message || "Failed to load services from provider.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch services", err);
-      setApiError("Network error. Please check your internet or retry.");
+      setApiError(err.message || "Network error. Please check your internet or retry.");
     } finally {
       setLoading(false);
     }
@@ -415,9 +416,22 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
-        <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
-        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">Initializing SMMFLOW Security...</p>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-6 p-6">
+        <div className="relative">
+          <Loader2 className="w-16 h-16 text-emerald-500 animate-spin" />
+          <div className="absolute inset-0 bg-emerald-500/20 blur-xl rounded-full scale-150 animate-pulse" />
+        </div>
+        <div className="text-center space-y-4">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest animate-pulse">
+            {initializationStatus}
+          </p>
+          <button 
+            onClick={() => setAuthLoading(false)}
+            className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white transition-colors"
+          >
+            STUCK? CLICK TO FORCE LOAD
+          </button>
+        </div>
       </div>
     );
   }

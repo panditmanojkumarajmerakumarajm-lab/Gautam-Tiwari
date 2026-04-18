@@ -4,6 +4,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/
 import { 
   getFirestore, 
   initializeFirestore,
+  memoryLocalCache,
   doc, 
   getDoc, 
   setDoc, 
@@ -21,11 +22,11 @@ import firebaseConfig from "../../firebase-applet-config.json";
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Use robust initialization with long polling as fallback for restricted networks
-const dbId = (firebaseConfig as any).firestoreDatabaseId;
+// Use memory cache and long polling to bypass iframe/proxy restrictions
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-}, (dbId && dbId !== "(default)") ? dbId : undefined);
+  localCache: memoryLocalCache()
+});
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -77,20 +78,6 @@ export function handleFirestoreError(error: any, operationType: FirestoreErrorIn
   }
   throw error;
 }
-
-async function testConnection() {
-  try {
-    const testDoc = doc(db, 'test', 'connection');
-    await getDocFromServer(testDoc);
-    console.log("Firebase connection successful.");
-  } catch (error: any) {
-    console.error("Firestore Connection Test Error:", error.code, error.message);
-    if (error.message?.includes('the client is offline') || error.code === 'unavailable') {
-      console.error("Firebase is offline. Check if Firestore is enabled in Console.");
-    }
-  }
-}
-testConnection();
 
 export { 
   doc, 
