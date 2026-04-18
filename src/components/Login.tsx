@@ -19,6 +19,21 @@ interface LoginProps {
 }
 
 export default function Login({ logoUrl }: LoginProps) {
+  const handleLogin = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error("Login Error:", error);
+      if (error.code === 'auth/popup-blocked') {
+        alert("Please allow popups for this site to login with Google.");
+      } else if (error.code === 'auth/unauthorized-domain') {
+        alert("This domain is not authorized for Google Login. Please add your domain to Firebase Console -> Auth -> Settings -> Authorized Domains.");
+      } else {
+        alert("Login failed: " + (error.message || "Unknown error"));
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-emerald-500/30">
       <motion.div 
@@ -74,7 +89,7 @@ export default function Login({ logoUrl }: LoginProps) {
           </div>
 
           <button 
-            onClick={() => signInWithGoogle()}
+            onClick={handleLogin}
             className="w-full py-4 bg-white hover:bg-slate-100 text-slate-900 font-black rounded-2xl transition-all shadow-xl shadow-white/5 flex items-center justify-center gap-3 active:scale-95"
           >
             <img src="https://www.vectorlogo.zone/logos/google/google-icon.svg" alt="Google" className="w-5 h-5" />
