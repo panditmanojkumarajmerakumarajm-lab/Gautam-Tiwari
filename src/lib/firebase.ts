@@ -1,7 +1,9 @@
+// Export the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   getDoc, 
   setDoc, 
@@ -18,11 +20,25 @@ import firebaseConfig from "../../firebase-applet-config.json";
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Use robust initialization with long polling as fallback for restricted networks
+const dbId = (firebaseConfig as any).firestoreDatabaseId;
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, (dbId && dbId !== "(default)") ? dbId : undefined);
 
 const googleProvider = new GoogleAuthProvider();
 
-export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const signInWithGoogle = async () => {
+  try {
+    return await signInWithPopup(auth, googleProvider);
+  } catch (error: any) {
+    if (error.code === 'auth/unauthorized-domain') {
+      console.error("Unauthorized Domain Error. Please add this domain to Firebase Console:", window.location.hostname);
+    }
+    throw error;
+  }
+};
 export const logout = () => signOut(auth);
 
 export interface FirestoreErrorInfo {
@@ -66,9 +82,11 @@ async function testConnection() {
   try {
     const testDoc = doc(db, 'test', 'connection');
     await getDocFromServer(testDoc);
+    console.log("Firebase connection successful.");
   } catch (error: any) {
-    if (error.message?.includes('the client is offline')) {
-      console.error("Firebase is offline. Check configuration.");
+    console.error("Firestore Connection Test Error:", error.code, error.message);
+    if (error.message?.includes('the client is offline') || error.code === 'unavailable') {
+      console.error("Firebase is offline. Check if Firestore is enabled in Console.");
     }
   }
 }

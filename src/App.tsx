@@ -112,88 +112,93 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        // Sync user profile
-        const userRef = doc(db, "users", user.uid);
-        
-        try {
-          const userSnap = await getDoc(userRef);
+      try {
+        setCurrentUser(user);
+        if (user) {
+          // Sync user profile
+          const userRef = doc(db, "users", user.uid);
           
-          if (!userSnap.exists()) {
-            const newProfile = {
-              email: user.email,
-              displayName: user.displayName,
-              balance: 0,
-              createdAt: serverTimestamp(),
-              lastLogin: serverTimestamp()
-            };
-            await setDoc(userRef, newProfile);
-            setUserData(newProfile);
-            setUserBalance(0);
-          } else {
-            const data = userSnap.data();
-            setUserData(data);
-            setUserBalance(data.balance || 0);
-            await updateDoc(userRef, { lastLogin: serverTimestamp() });
-          }
-        } catch (e) {
-          handleFirestoreError(e, 'get', `users/${user.uid}`);
-        }
-
-        // Check Admin Status
-        try {
-          const adminSnap = await getDoc(doc(db, "admins", user.uid));
-          const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-          
-          if (!adminSnap.exists() && isHardcodedAdmin) {
-            await setDoc(doc(db, "admins", user.uid), {
-              email: user.email,
-              role: "admin",
-              assignedAt: serverTimestamp()
-            });
-            setIsAdmin(true);
-          } else {
-            setIsAdmin(adminSnap.exists());
-          }
-        } catch (e) {
-          // If admin check fails, assume not admin but don't crash the whole flow
-          console.warn("Admin check failed", e);
-          const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
-          setIsAdmin(isHardcodedAdmin);
-        }
-
-        // Listen for Real-time Balance & Data updates
-        onSnapshot(userRef, 
-          (doc) => {
-            if (doc.exists()) {
-              setUserData(doc.data());
-              setUserBalance(doc.data().balance || 0);
+          try {
+            const userSnap = await getDoc(userRef);
+            
+            if (!userSnap.exists()) {
+              const newProfile = {
+                email: user.email,
+                displayName: user.displayName,
+                balance: 0,
+                createdAt: serverTimestamp(),
+                lastLogin: serverTimestamp()
+              };
+              await setDoc(userRef, newProfile);
+              setUserData(newProfile);
+              setUserBalance(0);
+            } else {
+              const data = userSnap.data();
+              setUserData(data);
+              setUserBalance(data.balance || 0);
+              await updateDoc(userRef, { lastLogin: serverTimestamp() });
             }
-          },
-          (err) => handleFirestoreError(err, 'get', `users/${user.uid}`)
-        );
+          } catch (e) {
+            console.error("Profile sync error", e);
+            // Don't throw here to allow app to load
+          }
 
-        // Listen for user's payments
-        const q = query(collection(db, "payments"), where("userId", "==", user.uid));
-        onSnapshot(q, 
-          (snapshot) => {
-            const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setPendingPayments(payments.sort((a: any, b: any) => {
-              const dateA = a.timestamp?.seconds || 0;
-              const dateB = b.timestamp?.seconds || 0;
-              return dateB - dateA;
-            }));
-          },
-          (err) => handleFirestoreError(err, 'list', 'payments')
-        );
-      } else {
-        setUserData(null);
-        setUserBalance(0);
-        setPendingPayments([]);
-        setIsAdmin(false);
+          // Check Admin Status
+          try {
+            const adminSnap = await getDoc(doc(db, "admins", user.uid));
+            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+            
+            if (!adminSnap.exists() && isHardcodedAdmin) {
+              await setDoc(doc(db, "admins", user.uid), {
+                email: user.email,
+                role: "admin",
+                assignedAt: serverTimestamp()
+              });
+              setIsAdmin(true);
+            } else {
+              setIsAdmin(adminSnap.exists());
+            }
+          } catch (e) {
+            console.warn("Admin check failed", e);
+            const isHardcodedAdmin = ["shreemadbhagwat621@gmail.com", "tiwarigautam819@gmail.com"].includes(user.email || "");
+            setIsAdmin(isHardcodedAdmin);
+          }
+
+          // Listen for Real-time Balance & Data updates
+          onSnapshot(userRef, 
+            (doc) => {
+              if (doc.exists()) {
+                setUserData(doc.data());
+                setUserBalance(doc.data().balance || 0);
+              }
+            },
+            (err) => console.warn("Balance sync failed", err)
+          );
+
+          // Listen for user's payments
+          const q = query(collection(db, "payments"), where("userId", "==", user.uid));
+          onSnapshot(q, 
+            (snapshot) => {
+              const payments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              setPendingPayments(payments.sort((a: any, b: any) => {
+                const dateA = a.timestamp?.seconds || 0;
+                const dateB = b.timestamp?.seconds || 0;
+                return dateB - dateA;
+              }));
+            },
+            (err) => console.warn("Payments sync failed", err)
+          );
+        } else {
+          setUserData(null);
+          setUserBalance(0);
+          setPendingPayments([]);
+          setIsAdmin(false);
+        }
+      } catch (err) {
+        console.error("Auth state change error:", err);
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
 
     return () => unsubscribe();
@@ -238,15 +243,22 @@ export default function App() {
       alert("Submission failed. Try again.");
     }
   };
+  const [apiError, setApiError] = useState<string | null>(null);
+
   const fetchServices = async () => {
+    setLoading(true);
+    setApiError(null);
     try {
       const res = await fetch("/api/services");
       const data = await res.json();
       if (data.success) {
         setApiServices(data.services);
+      } else {
+        setApiError(data.message || "Failed to load services from provider.");
       }
     } catch (err) {
       console.error("Failed to fetch services", err);
+      setApiError("Network error. Please check your internet or retry.");
     } finally {
       setLoading(false);
     }
@@ -587,6 +599,17 @@ export default function App() {
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 className="w-12 h-12 text-emerald-500 animate-spin" />
               <p className="text-slate-400 font-medium animate-pulse">Fetching latest services...</p>
+            </div>
+          ) : apiError ? (
+            <div className="text-center py-20 bg-red-500/5 rounded-3xl border border-dashed border-red-500/30 space-y-4">
+              <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+              <p className="text-red-400 font-bold uppercase tracking-widest text-xs">{apiError}</p>
+              <button 
+                onClick={fetchServices}
+                className="px-6 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors"
+              >
+                RETRY FETCHING
+              </button>
             </div>
           ) : (
             <div className="space-y-6">

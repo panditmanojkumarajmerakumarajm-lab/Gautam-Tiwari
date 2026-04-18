@@ -31,27 +31,46 @@ async function startServer() {
   // API Route to fetch services with 20% markup
   app.get("/api/services", async (req, res) => {
     try {
+      console.log("Fetching services from provider...");
       const response = await fetch(GLORY_API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        headers: { 
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": "SMMFLOW-Server"
+        },
         body: new URLSearchParams({
           key: GLORY_API_KEY,
           action: "services"
         })
       });
       const data = await response.json();
+      console.log("Provider Response Status:", response.status);
+      console.log("Provider Response Data Type:", typeof data);
       
       if (Array.isArray(data)) {
+        console.log(`Successfully fetched ${data.length} services.`);
         // Apply markup to the rate
-        const markedUpServices = data.map((s: any) => ({
-          ...s,
-          // Rate in SMM panels is usually per 1000
-          originalRate: parseFloat(s.rate),
-          rate: (parseFloat(s.rate) * GLOBAL_MARKUP).toFixed(2) 
-        }));
+        const markedUpServices = data
+          .map((s: any) => {
+            // Some panels return rate with commas, strip them
+            const rateStr = String(s.rate).replace(/,/g, '');
+            const originalRate = parseFloat(rateStr);
+            if (isNaN(originalRate)) return null;
+            
+            return {
+              ...s,
+              // Rate in SMM panels is usually per 1000
+              originalRate: originalRate,
+              rate: (originalRate * GLOBAL_MARKUP).toFixed(2) 
+            };
+          })
+          .filter(s => s !== null);
+
+        console.log(`Returning ${markedUpServices.length} valid marked-up services.`);
         res.json({ success: true, services: markedUpServices });
       } else {
-        res.status(400).json({ success: false, message: "Failed to fetch services" });
+        console.error("Provider returned non-array data:", data);
+        res.status(400).json({ success: false, message: "Provider returned invalid data format", details: data });
       }
     } catch (error) {
       console.error("Fetch services error:", error);
