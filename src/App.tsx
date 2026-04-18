@@ -251,7 +251,16 @@ export default function App() {
     setLoading(true);
     setApiError(null);
     try {
-      const res = await fetch("/api/services");
+      const res = await fetch("/v1/api/services");
+      
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        console.error("Non-JSON response received:", text.substring(0, 200));
+        setApiError(`Server returned HTML instead of data (Status: ${res.status}). This usually means the API route is blocked or misconfigured.`);
+        return;
+      }
+
       const data = await res.json();
       if (data.success) {
         setApiServices(data.services);
@@ -260,7 +269,12 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Failed to fetch services", err);
-      setApiError(err.message || "Network error. Please check your internet or retry.");
+      // Catch syntax error during JSON parse which causes the "Unexpected token <"
+      if (err.message?.includes("Unexpected token") || err.message?.includes("is not valid JSON")) {
+        setApiError("The server returned an invalid format (HTML). Please try refreshing your browser.");
+      } else {
+        setApiError(err.message || "Network error. Please check your internet or retry.");
+      }
     } finally {
       setLoading(false);
     }

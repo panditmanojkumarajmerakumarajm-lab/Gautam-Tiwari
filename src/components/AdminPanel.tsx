@@ -135,7 +135,7 @@ export default function AdminPanel({ onClose, logoUrl }: AdminPanelProps) {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch("/api/admin/stats");
+      const res = await fetch("/v1/api/admin/stats");
       const data = await res.json();
       if (data.success) {
         setStats(data.stats);
@@ -177,7 +177,7 @@ export default function AdminPanel({ onClose, logoUrl }: AdminPanelProps) {
     e.preventDefault();
     setUpdatingMarkup(true);
     try {
-      const res = await fetch("/api/admin/update-markup", {
+      const res = await fetch("/v1/api/admin/update-markup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ markup: newMarkup })

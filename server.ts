@@ -28,18 +28,21 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Use a more specific prefix to avoid conflicts with hosting provider routes (e.g., Wasmer /api)
+  const API_PREFIX = "/v1/api";
+
   // API Route to fetch services with 20% markup
-  app.get("/api/services", async (req, res) => {
+  app.get(`${API_PREFIX}/services`, async (req, res) => {
     try {
       console.log("Fetching services from provider...");
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(GLORY_API_URL, {
         method: "POST",
         headers: { 
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
         },
         body: new URLSearchParams({
           key: GLORY_API_KEY,
@@ -53,16 +56,27 @@ async function startServer() {
       const responseText = await response.text();
       console.log("Provider Response Status:", response.status);
       
+      if (!response.ok) {
+        return res.status(response.status).json({ 
+          success: false, 
+          message: `Provider error (${response.status})`,
+          debug: responseText.substring(0, 100)
+        });
+      }
+
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
         console.error("Provider returned non-JSON:", responseText);
-        return res.status(502).json({ success: false, message: "Provider returned invalid response (Non-JSON)" });
+        return res.status(502).json({ 
+          success: false, 
+          message: "Provider returned invalid response (Non-JSON)",
+          preview: responseText.substring(0, 100)
+        });
       }
 
       if (Array.isArray(data)) {
-        console.log(`Successfully fetched ${data.length} services.`);
         const markedUpServices = data
           .map((s: any) => {
             const rateStr = String(s.rate).replace(/,/g, '');
@@ -79,7 +93,6 @@ async function startServer() {
 
         res.json({ success: true, services: markedUpServices });
       } else {
-        console.error("Provider error or non-array data:", data);
         res.status(400).json({ 
           success: false, 
           message: data.error || "Provider returned invalid data format",
@@ -91,13 +104,13 @@ async function startServer() {
       const isTimeout = error.name === 'AbortError';
       res.status(isTimeout ? 504 : 500).json({ 
         success: false, 
-        message: isTimeout ? "Provider connection timed out" : `Server error: ${error.message}` 
+        message: isTimeout ? "Provider connection timed out" : `Server connection error: ${error.message}` 
       });
     }
   });
 
   // API Route for SMM Panel Order
-  app.post("/api/place-order", async (req, res) => {
+  app.post(`${API_PREFIX}/place-order`, async (req, res) => {
     const { serviceId, link, quantity, comments } = req.body;
 
     console.log(`Processing order: Service ${serviceId}, Link ${link}, Qty ${quantity}`);
@@ -151,7 +164,7 @@ async function startServer() {
   });
 
   // API Route to check balance
-  app.get("/api/check-balance", async (req, res) => {
+  app.get(`${API_PREFIX}/check-balance`, async (req, res) => {
     try {
       const params = new URLSearchParams({
         key: GLORY_API_KEY,
@@ -176,7 +189,7 @@ async function startServer() {
   });
 
   // PAYMENT ENDPOINTS
-  app.post("/api/payments/submit", (req, res) => {
+  app.post(`${API_PREFIX}/payments/submit`, (req, res) => {
     const { utr, amount } = req.body;
     
     if (!utr || !amount) {
@@ -200,7 +213,7 @@ async function startServer() {
     res.json({ success: true, payment: newPayment });
   });
 
-  app.get("/api/payments/status/:utr", (req, res) => {
+  app.get(`${API_PREFIX}/payments/status/:utr`, (req, res) => {
     const { utr } = req.params;
     const payment = payments.find(p => p.utr === utr);
     
@@ -212,11 +225,11 @@ async function startServer() {
   });
 
   // ADMIN PAYMENT ENDPOINTS
-  app.get("/api/admin/payments", (req, res) => {
+  app.get(`${API_PREFIX}/admin/payments`, (req, res) => {
     res.json({ success: true, payments: payments.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) });
   });
 
-  app.post("/api/admin/approve-payment", (req, res) => {
+  app.post(`${API_PREFIX}/admin/approve-payment`, (req, res) => {
     const { id } = req.body;
     const payment = payments.find(p => p.id === id);
     
@@ -228,7 +241,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/reject-payment", (req, res) => {
+  app.post(`${API_PREFIX}/admin/reject-payment`, (req, res) => {
     const { id } = req.body;
     const payment = payments.find(p => p.id === id);
     
@@ -240,7 +253,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/login", (req, res) => {
+  app.post(`${API_PREFIX}/admin/login`, (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
       res.json({ success: true });
@@ -249,7 +262,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/admin/stats", async (req, res) => {
+  app.get(`${API_PREFIX}/admin/stats`, async (req, res) => {
     try {
       // Fetch balance and services count for stats
       const balanceParams = new URLSearchParams({ key: GLORY_API_KEY, action: "balance" });
@@ -277,7 +290,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/admin/update-markup", (req, res) => {
+  app.post(`${API_PREFIX}/admin/update-markup`, (req, res) => {
     const { markup } = req.body;
     const newMarkup = parseFloat(markup);
     
